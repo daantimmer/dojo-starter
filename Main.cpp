@@ -267,8 +267,6 @@ namespace
             std::string input;
             std::cin >> input;
 
-            std::cout << "input:" << input << std::endl;
-
             auto column = input[0] - 'A';
             auto row = input[1] - '0';
 
