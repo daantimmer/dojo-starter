@@ -1,0 +1,15 @@
+{
+  "image": "ghcr.io/philips-software/amp-devcontainer:2.5.0",
+  "remoteEnv": { "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}" },
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "extensions": [
+    "IBM.output-colorizer",
+    "llvm-vs-code-extensions.vscode-clangd",
+    "marus25.cortex-debug",
+    "matepek.vscode-catch2-test-adapter",
+    "ms-vscode.cmake-tools",
+    "SonarSource.sonarlint-vscode"
+  ]
+}
