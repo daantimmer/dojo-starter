@@ -97,7 +97,7 @@ namespace
 
             void Print() override
             {
-                std::cout << ".";
+                std::cout << "_";
             }
         };
 
@@ -115,6 +115,11 @@ namespace
 
             void AssignAvailable(TileVariant&) override
             {
+            }
+
+            void Print() override
+            {
+                std::cout << ".";
             }
         };
 
@@ -147,21 +152,6 @@ namespace
 
     struct Board
     {
-        void AssignAvailableOrIgnore(int column, int row)
-        {
-            std::array<std::function<void(int, int)>, 2> assignOrIgnore = {
-                [](auto, auto) {},
-                [this](auto column, auto row)
-                {
-                    rows.at(row).at(column).AssignAvailable();
-                }
-            };
-
-            bool columnValid = column >= 0 && column < (width);
-            bool rowValid = row >= 0 && row < (height);
-
-            assignOrIgnore[static_cast<int>(columnValid && rowValid)](column, row);
-        }
 
         Board()
         {
@@ -249,6 +239,23 @@ namespace
             AssignAvailableOrIgnore(x + 1, y + 1);
         }
 
+        void AssignAvailableOrIgnore(int column, int row)
+        {
+            std::array<std::function<void(int, int)>, 2> assignOrIgnore = {
+                [](auto, auto) {},
+                [this](auto column, auto row)
+                {
+                    rows.at(row).at(column).AssignAvailable();
+                }
+            };
+
+            bool columnValid = column >= 0 && column < width;
+            bool rowValid = row >= 0 && row < height;
+
+            assignOrIgnore[static_cast<int>(columnValid && rowValid)](column, row);
+        }
+
+    private:
         std::array<std::array<Tile, width>, height> rows;
     };
 
@@ -259,6 +266,8 @@ namespace
             std::cout << "> ";
             std::string input;
             std::cin >> input;
+
+            std::cout << "input:" << input << std::endl;
 
             auto column = input[0] - 'A';
             auto row = input[1] - '0';
