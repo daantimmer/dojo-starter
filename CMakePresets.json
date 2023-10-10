@@ -13,7 +13,7 @@
       "generator": "Ninja Multi-Config",
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo;MinSizeRel",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "On"
       }
     },
     {
