@@ -2,6 +2,7 @@
 #include <array>
 #include <bits/ranges_algo.h>
 #include <cctype>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <ranges>
@@ -32,6 +33,8 @@ namespace
     constexpr Dir dirSW{ -1, 1 };
     constexpr Dir dirS{ 0, 1 };
     constexpr Dir dirSE{ 1, 1 };
+
+    constexpr std::array allDirections = { dirNW, dirN, dirNE, dirW, dirE, dirSW, dirS, dirSE };
 
     struct PlaceTileStrategy
     {
@@ -66,22 +69,22 @@ namespace
     struct UpdateStrategy
     {
         virtual ~UpdateStrategy() = default;
-        virtual void Update(Board& board, int x, int y, Dir dir) = 0;
+        virtual void Update(Board& board, int x, int y) = 0;
     };
 
     struct NoOpUpdateStrategy : UpdateStrategy
     {
-        void Update(Board& board, int x, int y, Dir dir) override;
+        void Update(Board& board, int x, int y) override;
     };
 
     struct UpdateToWhiteStrategy : UpdateStrategy
     {
-        void Update(Board& board, int x, int y, Dir dir) override;
+        void Update(Board& board, int x, int y) override;
     };
 
     struct UpdateToBlackStrategy : UpdateStrategy
     {
-        void Update(Board& board, int x, int y, Dir dir) override;
+        void Update(Board& board, int x, int y) override;
     };
 
     struct CanPlaceAroundStrategy : PlaceTileStrategy
@@ -104,9 +107,32 @@ namespace
         void Place(Board& board, int x, int y) const override;
     };
 
+    struct GameStateStrategy
+    {
+        virtual ~GameStateStrategy() = default;
+        virtual void PrintResults(Board& board) = 0;
+    };
+
+    struct EndGameStrategy : GameStateStrategy
+    {
+        void PrintResults(Board& board) override;
+    };
+
+    struct ContinueGameStrategy : GameStateStrategy
+    {
+        void PrintResults(Board& board) override
+        {}
+    };
+
     struct Tile
     {
-        virtual const char* Value() const = 0;
+        Tile(Board& board, int x, int y)
+            : board{ board }
+            , x{ x }
+            , y{ y }
+        {}
+
+        virtual const char Value() const = 0;
 
         virtual std::unique_ptr<CanPlaceAroundStrategy> IsWhite(std::unique_ptr<CanPlaceAroundStrategy> strategy) = 0;
         virtual std::unique_ptr<CanPlaceAroundStrategy> IsBlack(std::unique_ptr<CanPlaceAroundStrategy> strategy) = 0;
@@ -114,15 +140,29 @@ namespace
         virtual std::unique_ptr<CheckNeighboursStrategy> SetWhite() = 0;
         virtual std::unique_ptr<CheckNeighboursStrategy> SetBlack() = 0;
 
-        virtual std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, int x, int y, Dir dir) = 0;
-        virtual std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, int x, int y, Dir dir) = 0;
+        virtual std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, Dir dir) = 0;
+        virtual std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, Dir dir) = 0;
+
+        virtual std::unique_ptr<GameStateStrategy> GetGameStateStrategy(std::unique_ptr<GameStateStrategy> strategy) = 0;
+
+        virtual std::uint32_t IncrementWhiteResult(std::uint32_t value) = 0;
+        virtual std::uint32_t IncrementBlackResult(std::uint32_t value) = 0;
+
+        Board& board;
+        int x;
+        int y;
     };
 
     struct BorderTile : Tile
     {
-        const char* Value() const override
+        BorderTile(Board& board, const char value)
+            : Tile{ board, 0, 0 }
+            , value{ value }
+        {}
+
+        const char Value() const override
         {
-            return "X";
+            return value;
         };
 
         std::unique_ptr<CanPlaceAroundStrategy> IsWhite(std::unique_ptr<CanPlaceAroundStrategy> strategy) override
@@ -145,22 +185,41 @@ namespace
             return std::make_unique<NoOpCheckNeighboursStrategy>();
         }
 
-        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, int x, int y, Dir dir) override
+        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, Dir dir) override
         {
             return std::make_unique<NoOpUpdateStrategy>();
         }
 
-        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, int x, int y, Dir dir) override
+        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, Dir dir) override
         {
             return std::make_unique<NoOpUpdateStrategy>();
         }
+
+        std::unique_ptr<GameStateStrategy> GetGameStateStrategy(std::unique_ptr<GameStateStrategy> strategy) override
+        {
+            return strategy;
+        }
+
+        std::uint32_t IncrementWhiteResult(std::uint32_t value) override
+        {
+            return value;
+        };
+
+        std::uint32_t IncrementBlackResult(std::uint32_t value) override
+        {
+            return value;
+        };
+
+        const char value;
     };
 
     struct EmptyTile : Tile
     {
-        const char* Value() const override
+        using Tile::Tile;
+
+        const char Value() const override
         {
-            return " ";
+            return ' ';
         };
 
         std::unique_ptr<CanPlaceAroundStrategy> IsWhite(std::unique_ptr<CanPlaceAroundStrategy> strategy) override
@@ -183,22 +242,39 @@ namespace
             return std::make_unique<CheckForWhiteNeighboursStrategy>();
         };
 
-        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, int x, int y, Dir dir) override
+        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, Dir dir) override
         {
             return std::make_unique<NoOpUpdateStrategy>();
         }
 
-        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, int x, int y, Dir dir) override
+        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, Dir dir) override
         {
             return std::make_unique<NoOpUpdateStrategy>();
         }
+
+        std::unique_ptr<GameStateStrategy> GetGameStateStrategy(std::unique_ptr<GameStateStrategy> strategy) override
+        {
+            return std::make_unique<ContinueGameStrategy>();
+        }
+
+        std::uint32_t IncrementWhiteResult(std::uint32_t value) override
+        {
+            return value;
+        };
+
+        std::uint32_t IncrementBlackResult(std::uint32_t value) override
+        {
+            return value;
+        };
     };
 
     struct WhiteTile : Tile
     {
-        const char* Value() const override
+        using Tile::Tile;
+
+        const char Value() const override
         {
-            return "W";
+            return 'W';
         };
 
         std::unique_ptr<CanPlaceAroundStrategy> IsWhite(std::unique_ptr<CanPlaceAroundStrategy> strategy) override
@@ -221,16 +297,33 @@ namespace
             return std::make_unique<InvalidCheckNeighboursStrategy>();
         };
 
-        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, int x, int y, Dir dir) override;
+        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, Dir dir) override;
 
-        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, int x, int y, Dir dir) override;
+        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, Dir dir) override;
+
+        std::unique_ptr<GameStateStrategy> GetGameStateStrategy(std::unique_ptr<GameStateStrategy> strategy) override
+        {
+            return strategy;
+        }
+
+        std::uint32_t IncrementWhiteResult(std::uint32_t value) override
+        {
+            return value + 1;
+        };
+
+        std::uint32_t IncrementBlackResult(std::uint32_t value) override
+        {
+            return value;
+        };
     };
 
     struct BlackTile : Tile
     {
-        const char* Value() const override
+        using Tile::Tile;
+
+        const char Value() const override
         {
-            return "B";
+            return 'B';
         };
 
         std::unique_ptr<CanPlaceAroundStrategy> IsWhite(std::unique_ptr<CanPlaceAroundStrategy> strategy) override
@@ -253,38 +346,56 @@ namespace
             return std::make_unique<InvalidCheckNeighboursStrategy>();
         };
 
-        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, int x, int y, Dir dir) override;
+        std::unique_ptr<UpdateStrategy> UpdateToWhite(Board& board, Dir dir) override;
 
-        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, int x, int y, Dir dir) override;
+        std::unique_ptr<UpdateStrategy> UpdateToBlack(Board& board, Dir dir) override;
+
+        std::unique_ptr<GameStateStrategy> GetGameStateStrategy(std::unique_ptr<GameStateStrategy> strategy) override
+        {
+            return strategy;
+        }
+
+        std::uint32_t IncrementWhiteResult(std::uint32_t value) override
+        {
+            return value;
+        };
+
+        std::uint32_t IncrementBlackResult(std::uint32_t value) override
+        {
+            return value + 1;
+        };
     };
 
     struct Board
     {
         explicit Board()
         {
+            const char* rowinput = " ABCDEFGH ";
+            const char* colinput = " 01234567 ";
+
             // fill first and last row with BorderTiles
-            std::ranges::for_each(rows.front(), [](std::unique_ptr<Tile>& tile)
+            std::ranges::for_each(rows.front(), [this, &rowinput, index = 0](std::unique_ptr<Tile>& tile) mutable
                 {
-                    tile = std::make_unique<BorderTile>();
+                    tile = std::make_unique<BorderTile>(*this, rowinput[index++]);
                 });
-            std::ranges::for_each(rows.back(), [](std::unique_ptr<Tile>& tile)
+            std::ranges::for_each(rows.back(), [this, &rowinput, index = 0](std::unique_ptr<Tile>& tile) mutable
                 {
-                    tile = std::make_unique<BorderTile>();
+                    tile = std::make_unique<BorderTile>(*this, rowinput[index++]);
                 });
 
             // fill first and last column with BorderTiles
-            std::ranges::for_each(rows, [](std::array<std::unique_ptr<Tile>, width + 2>& row)
+            std::ranges::for_each(rows, [this, &colinput, index = 0](std::array<std::unique_ptr<Tile>, width + 2>& row) mutable
                 {
-                    row.front() = std::make_unique<BorderTile>();
-                    row.back() = std::make_unique<BorderTile>();
+                    row.front() = std::make_unique<BorderTile>(*this, colinput[index]);
+                    row.back() = std::make_unique<BorderTile>(*this, colinput[index++]);
                 });
 
             std::ranges::for_each(rows | std::views::drop(1) | std::views::take(height),
-                [](std::array<std::unique_ptr<Tile>, width + 2>& row)
+                [this](std::array<std::unique_ptr<Tile>, width + 2>& row)
                 {
-                    std::ranges::for_each(row | std::views::drop(1) | std::views::take(width), [](std::unique_ptr<Tile>& tile)
+                    std::ranges::for_each(row | std::views::drop(1) | std::views::take(width), [this](std::unique_ptr<Tile>& tile)
                         {
-                            tile = std::make_unique<EmptyTile>();
+                            tile = std::make_unique<EmptyTile>(*this, 0, 0);
                         });
                 });
 
@@ -296,17 +407,6 @@ namespace
             InitTile<BlackTile>(4, 3);
 
             Print();
-            PlaceBlack(2, 3);
-            Print();
-
-            PlaceWhite(2, 4);
-            Print();
-
-            PlaceBlack(3, 5);
-            Print();
-
-            PlaceWhite(2, 2);
-            Print();
         }
 
         void Print()
@@ -314,16 +414,58 @@ namespace
             std::ranges::for_each(rows, PrintRow);
         }
 
-        void PlaceWhite(int x, int y)
+        void EndOrContinue()
         {
-            std::cout << "PlaceWhite(" << x << "," << y << ")\n";
+            std::unique_ptr<GameStateStrategy> strategy = std::make_unique<EndGameStrategy>();
+
+            std::ranges::for_each(rows | std::views::drop(1) | std::views::take(height),
+                [&strategy](std::array<std::unique_ptr<Tile>, width + 2>& row)
+                {
+                    std::ranges::for_each(row | std::views::drop(1) | std::views::take(width), [&strategy](std::unique_ptr<Tile>& tile)
+                        {
+                            strategy = tile->GetGameStateStrategy(std::move(strategy));
+                        });
+                });
+
+            strategy->PrintResults(*this);
+        }
+
+        void PrintResults()
+        {
+            std::uint32_t whiteCount = 0;
+            std::uint32_t blackCount = 0;
+
+            std::ranges::for_each(rows | std::views::drop(1) | std::views::take(height),
+                [&whiteCount, &blackCount](std::array<std::unique_ptr<Tile>, width + 2>& row)
+                {
+                    std::ranges::for_each(row | std::views::drop(1) | std::views::take(width), [&whiteCount, &blackCount](std::unique_ptr<Tile>& tile)
+                        {
+                            whiteCount = tile->IncrementWhiteResult(whiteCount);
+                            blackCount = tile->IncrementBlackResult(blackCount);
+                        });
+                });
+
+            std::cout << "white score: " << whiteCount << "\n"
+                      << "black score: " << blackCount << "\n";
+        }
+
+        void
+        PlaceWhite(int x, int y)
+        {
             Get(x, y)->SetWhite()->Place(*this, x, y);
+
+            Print();
+            PrintResults();
+            EndOrContinue();
         }
 
         void PlaceBlack(int x, int y)
         {
-            std::cout << "PlaceBlack(" << x << "," << y << ")\n";
             Get(x, y)->SetBlack()->Place(*this, x, y);
+
+            Print();
+            PrintResults();
+            EndOrContinue();
         }
 
         std::unique_ptr<Tile>& Get(int x, int y)
@@ -338,19 +480,19 @@ namespace
 
         void UpdateToWhite(int x, int y)
         {
-            Get(x, y) = std::make_unique<WhiteTile>();
+            Get(x, y) = std::make_unique<WhiteTile>(*this, x, y);
         }
 
         void UpdateToBlack(int x, int y)
         {
-            Get(x, y) = std::make_unique<BlackTile>();
+            Get(x, y) = std::make_unique<BlackTile>(*this, x, y);
         }
 
     private:
         template<class T>
         void InitTile(int x, int y)
         {
-            rows[y + 1][x + 1] = std::make_unique<T>();
+            Get(x, y) = std::make_unique<T>(*this, x, y);
         }
 
         static void PrintTile(const std::unique_ptr<Tile>& tile)
@@ -384,6 +526,11 @@ namespace
 
     /////////////////////////////////
 
+    void EndGameStrategy::PrintResults(Board& board)
+    {
+        std::exit(0);
+    }
+
     void NoOpCheckNeighboursStrategy::Place(Board& board, int x, int y) const
     {
     }
@@ -392,16 +539,10 @@ namespace
     {
         std::unique_ptr<CanPlaceAroundStrategy> strategy = std::make_unique<CanNotPlaceAroundStrategy>();
 
-        strategy = board.Get(x, y, dirNW)->IsBlack(std::move(strategy));
-        strategy = board.Get(x, y, dirN)->IsBlack(std::move(strategy));
-        strategy = board.Get(x, y, dirNE)->IsBlack(std::move(strategy));
-
-        strategy = board.Get(x, y, dirW)->IsBlack(std::move(strategy));
-        strategy = board.Get(x, y, dirE)->IsBlack(std::move(strategy));
-
-        strategy = board.Get(x, y, dirSW)->IsBlack(std::move(strategy));
-        strategy = board.Get(x, y, dirS)->IsBlack(std::move(strategy));
-        strategy = board.Get(x, y, dirSE)->IsBlack(std::move(strategy));
+        for (const auto dir : allDirections)
+        {
+            strategy = board.Get(x, y, dir)->IsBlack(std::move(strategy));
+        }
 
         strategy->Place(board, x, y);
     }
@@ -410,16 +551,10 @@ namespace
     {
         std::unique_ptr<CanPlaceAroundStrategy> strategy = std::make_unique<CanNotPlaceAroundStrategy>();
 
-        strategy = board.Get(x, y, dirNW)->IsWhite(std::move(strategy));
-        strategy = board.Get(x, y, dirN)->IsWhite(std::move(strategy));
-        strategy = board.Get(x, y, dirNE)->IsWhite(std::move(strategy));
-
-        strategy = board.Get(x, y, dirW)->IsWhite(std::move(strategy));
-        strategy = board.Get(x, y, dirE)->IsWhite(std::move(strategy));
-
-        strategy = board.Get(x, y, dirSW)->IsWhite(std::move(strategy));
-        strategy = board.Get(x, y, dirS)->IsWhite(std::move(strategy));
-        strategy = board.Get(x, y, dirSE)->IsWhite(std::move(strategy));
+        for (const auto dir : allDirections)
+        {
+            strategy = board.Get(x, y, dir)->IsWhite(std::move(strategy));
+        }
 
         strategy->Place(board, x, y);
     }
@@ -429,15 +564,15 @@ namespace
         throw -1;
     }
 
-    void NoOpUpdateStrategy::Update(Board& board, int x, int y, Dir dir)
+    void NoOpUpdateStrategy::Update(Board& board, int x, int y)
     {}
 
-    void UpdateToWhiteStrategy::Update(Board& board, int x, int y, Dir dir)
+    void UpdateToWhiteStrategy::Update(Board& board, int x, int y)
     {
         board.UpdateToWhite(x, y);
     }
 
-    void UpdateToBlackStrategy::Update(Board& board, int x, int y, Dir dir)
+    void UpdateToBlackStrategy::Update(Board& board, int x, int y)
     {
         board.UpdateToBlack(x, y);
     }
@@ -446,72 +581,42 @@ namespace
     {
         board.UpdateToWhite(x, y);
 
-        const auto getX = [](int x, Dir dir)
+        for (const auto dir : allDirections)
         {
-            return x + dir.x;
-        };
-        const auto getY = [](int y, Dir dir)
-        {
-            return y + dir.y;
-        };
-
-        board.Get(x, y, dirNW)->UpdateToWhite(board, getX(x, dirNW), getY(y, dirNW), dirNW);
-        board.Get(x, y, dirN)->UpdateToWhite(board, getX(x, dirN), getY(y, dirN), dirN);
-        board.Get(x, y, dirNE)->UpdateToWhite(board, getX(x, dirNE), getY(y, dirNE), dirNE);
-
-        board.Get(x, y, dirW)->UpdateToWhite(board, getX(x, dirW), getY(y, dirW), dirW);
-        board.Get(x, y, dirE)->UpdateToWhite(board, getX(x, dirE), getY(y, dirE), dirE);
-
-        board.Get(x, y, dirSW)->UpdateToWhite(board, getX(x, dirSW), getY(y, dirSW), dirSW);
-        board.Get(x, y, dirS)->UpdateToWhite(board, getX(x, dirS), getY(y, dirS), dirS);
-        board.Get(x, y, dirSE)->UpdateToWhite(board, getX(x, dirSE), getY(y, dirSE), dirSE);
+            board.Get(x, y, dir)->UpdateToWhite(board, dir);
+        }
     }
 
     void CanPlaceBlackstrategy::Place(Board& board, int x, int y) const
     {
         board.UpdateToBlack(x, y);
 
-        const auto getX = [](int x, Dir dir)
+        for (const auto dir : allDirections)
         {
-            return x + dir.x;
-        };
-        const auto getY = [](int y, Dir dir)
-        {
-            return y + dir.y;
-        };
-
-        board.Get(x, y, dirNW)->UpdateToBlack(board, getX(x, dirNW), getY(y, dirNW), dirNW);
-        board.Get(x, y, dirN)->UpdateToBlack(board, getX(x, dirN), getY(y, dirN), dirN);
-        board.Get(x, y, dirNE)->UpdateToBlack(board, getX(x, dirNE), getY(y, dirNE), dirNE);
-
-        board.Get(x, y, dirW)->UpdateToBlack(board, getX(x, dirW), getY(y, dirW), dirW);
-        board.Get(x, y, dirE)->UpdateToBlack(board, getX(x, dirE), getY(y, dirE), dirE);
-
-        board.Get(x, y, dirSW)->UpdateToBlack(board, getX(x, dirSW), getY(y, dirSW), dirSW);
-        board.Get(x, y, dirS)->UpdateToBlack(board, getX(x, dirS), getY(y, dirS), dirS);
-        board.Get(x, y, dirSE)->UpdateToBlack(board, getX(x, dirSE), getY(y, dirSE), dirSE);
+            board.Get(x, y, dir)->UpdateToBlack(board, dir);
+        }
     }
 
-    std::unique_ptr<UpdateStrategy> WhiteTile::UpdateToWhite(Board& board, int x, int y, Dir dir)
+    std::unique_ptr<UpdateStrategy> WhiteTile::UpdateToWhite(Board& board, Dir dir)
     {
         return std::make_unique<UpdateToWhiteStrategy>();
     }
 
-    std::unique_ptr<UpdateStrategy> WhiteTile::UpdateToBlack(Board& board, int x, int y, Dir dir)
+    std::unique_ptr<UpdateStrategy> WhiteTile::UpdateToBlack(Board& board, Dir dir)
     {
-        auto strategy = board.Get(x, y, dir)->UpdateToBlack(board, x, y, dir);
-        strategy->Update(board, x, y, dir);
+        auto strategy = board.Get(x, y, dir)->UpdateToBlack(board, dir);
+        strategy->Update(board, x, y);
         return strategy;
     }
 
-    std::unique_ptr<UpdateStrategy> BlackTile::UpdateToWhite(Board& board, int x, int y, Dir dir)
+    std::unique_ptr<UpdateStrategy> BlackTile::UpdateToWhite(Board& board, Dir dir)
     {
-        auto strategy = board.Get(x, y, dir)->UpdateToWhite(board, x, y, dir);
-        strategy->Update(board, x, y, dir);
+        auto strategy = board.Get(x, y, dir)->UpdateToWhite(board, dir);
+        strategy->Update(board, x, y);
         return strategy;
     }
 
-    std::unique_ptr<UpdateStrategy> BlackTile::UpdateToBlack(Board& board, int x, int y, Dir dir)
+    std::unique_ptr<UpdateStrategy> BlackTile::UpdateToBlack(Board& board, Dir dir)
     {
         return std::make_unique<UpdateToBlackStrategy>();
     }
@@ -520,33 +625,40 @@ namespace
 int main(int argc, const char* argv[])
 {
     Board board;
-    // Input input;
+    Input input;
 
-    // std::function<void(int, int)> assign{};
+    std::function<void(int, int)> assign{};
 
-    // std::function<void(int, int)> assignW{};
-    // std::function<void(int, int)> assignB{};
+    std::function<void(int, int)> assignW{};
+    std::function<void(int, int)> assignB{};
 
-    // assignW = [&board, &assign, &assignB](int column, int row)
-    // {
-    //     board.AssignW(column, row);
-    //     assign = assignB;
-    // };
+    assignW = [&board, &assign, &assignB](int column, int row)
+    {
+        board.PlaceWhite(column, row);
+        assign = assignB;
+    };
 
-    // assignB = [&board, &assign, &assignW](int column, int row)
-    // {
-    //     board.AssignB(column, row);
-    //     assign = assignW;
-    // };
+    assignB = [&board, &assign, &assignW](int column, int row)
+    {
+        board.PlaceBlack(column, row);
+        assign = assignW;
+    };
 
-    // assign = assignW;
+    assign = assignW;
 
-    // while (true)
-    // {
-    board.Print();
-    //     const auto [column, row] = input.Get();
-    //     assign(column, row);
-    // }
+    while (true)
+    {
+        {
+            std::cout << "W";
+            const auto [column, row] = input.Get();
+            assign(column, row);
+        }
+        {
+            std::cout << "B";
+            const auto [column, row] = input.Get();
+            assign(column, row);
+        }
+    }
 
     return 0;
 }
